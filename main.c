@@ -135,6 +135,38 @@ void add(const char *district, const char *role, const char *user) {
     }
 }
 
+void view(const char *district, int id_report) {
+    char path_file[1024];
+    sprintf(path_file, "%s/reports.dat", district);
+
+    int fd = open(path_file, O_RDONLY);
+    if (fd == -1) {
+        perror("Eroare la accesarea reports.dat");
+        return;
+    }
+
+    Report r;
+    int found = 0;
+    while (read(fd, &r, sizeof(Report)) == sizeof(Report)) {
+        if (r.id == id_report) {
+            found = 1;
+            printf("Inspector: %s\n", r.inspector);
+            printf("Categorie: %s\n", r.category);
+            printf("Severitate: %d\n", r.severity);
+            printf("Coordonate:  Lat: %.4f | Lon: %.4f\n", r.lat, r.lon);
+            printf("Data:        %s", ctime(&r.timestamp));
+            printf("------------------------------------------\n");
+            printf("DESCRIERE:\n%s\n", r.description);
+            printf("==========================================\n\n");
+            break;
+        }
+    }
+    if (!found) {
+        printf("[!] Eroare: Raportul cu ID-ul %d nu a fost gasit in districtul %s.\n", id_report, district);
+    }
+
+    close(fd);
+}
 int main(int argc, char *argv[]) {
     char *role = NULL;
     char *user = NULL;
@@ -168,6 +200,8 @@ int main(int argc, char *argv[]) {
     }
 
 
+    int id_cautat;
+    printf("Comanda:%s\n", command);
     if (strcmp(command, "add") == 0) {
         if (user == NULL) {
             printf("Comanda add necesita argumente --user <nume>.\n");
@@ -178,6 +212,11 @@ int main(int argc, char *argv[]) {
     else if (strcmp(command, "list") == 0) {
         printf("Lista rapoarte pentru %s (Rol: %s)\n", district, role);
         list_reports(district, role);
+    }
+    else if (strcmp(command, "view") == 0) {
+        printf("Introduceti id-ul cautat:\n");
+        scanf("%d", &id_cautat);
+        view(district, id_cautat);
     }
     else {
         printf("Comanda necunoscuta.\n");
