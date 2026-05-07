@@ -6,6 +6,8 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <time.h>
+#include <signal.h>
+#include <sys/wait.h>
 
 typedef struct {
     int id;
@@ -39,6 +41,7 @@ void check_access(const char *path, mode_t required_bit, const char *msg) {
     }
 }
 
+
 void log_action(const char *district, const char *role, const char *user, const char *action) {
     char path_log[1024];
     sprintf(path_log, "%s/logged_district", district);
@@ -66,6 +69,32 @@ void log_action(const char *district, const char *role, const char *user, const 
         close(log_fd);
     }
 }
+
+void notify_monitor(const char *district, const char *role, const char *user) {
+    FILE *f = fopen(".monitor_pid", "r");
+    char action_msg[256];
+
+    if (!f) {
+        sprintf(action_msg, "NOTIFY MONITOR: FAILED (Monitor not running)");
+        log_action(district, role, user, action_msg);
+        return;
+    }
+
+    pid_t monitor_pid;
+    if (fscanf(f, "%d", &monitor_pid) != 1) {
+        sprintf(action_msg, "NOTIFY MONITOR: FAILED (Invalid PID file)");
+    } else {
+        if (kill(monitor_pid, SIGUSR1) == 0) {
+            sprintf(action_msg, "NOTIFY MONITOR: SUCCESS (Sent to PID %d)", monitor_pid);
+        } else {
+            sprintf(action_msg, "NOTIFY MONITOR: FAILED (Signal error)");
+        }
+    }
+
+    fclose(f);
+    log_action(district, role, user, action_msg);
+}
+
 void handle_symlink(const char *district) {
     char link_name[512], target_path[1024];
     sprintf(link_name, "active_reports-%s", district);
@@ -200,10 +229,12 @@ void add(const char *district, const char *role, const char *user) {
     if (write(fd, &r, sizeof(Report)) == sizeof(Report)) {
         printf("Raport adaugat cu succes de catre %s (ID: %d)\n", user, r.id);
 
-
         char action[256];
         sprintf(action, "ADD REPORT ID %d", r.id);
         log_action(district, role, user, action);
+
+        // NOTIFICARE MONITOR
+        notify_monitor(district, role, user);
     }
     close(fd);
 }
@@ -373,6 +404,11 @@ void remove_district(const char *district, const char *role) {
         }
     }
 }
+
+
+
+
+
 int main(int argc, char *argv[]) {
     char *role = NULL, *user = "unknown", *command = NULL, *district = NULL;
     int arg_idx = 1;
