@@ -420,87 +420,11 @@ void update_threshold(const char *district, const char *value) {
     }
 }
 
-int remove_directory_recursive(const char *path) {
-    DIR *dir = opendir(path);
-    struct dirent *entry;
-
-    if (dir == NULL) {
-        return -1;
-    }
-
-    while ((entry = readdir(dir)) != NULL) {
-        char child_path[1024];
-        struct stat st;
-
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-
-        snprintf(child_path, sizeof(child_path), "%s/%s", path, entry->d_name);
-        if (lstat(child_path, &st) == -1) {
-            closedir(dir);
-            return -1;
-        }
-
-        if (S_ISDIR(st.st_mode)) {
-            if (remove_directory_recursive(child_path) == -1) {
-                closedir(dir);
-                return -1;
-            }
-        } else if (unlink(child_path) == -1) {
-            closedir(dir);
-            return -1;
-        }
-    }
-
-    closedir(dir);
-    return rmdir(path);
-}
-
-
-// Phase 2
-void remove_district(const char *district, const char *role) {
-    if (role == NULL || strcmp(role, "manager") != 0) {
-        fprintf(stderr, "[EROARE] Acces refuzat: Doar managerul poate sterge un district.\n");
-        return;
-    }
-
-    if (district == NULL || strlen(district) == 0 ||
-        strcmp(district, ".") == 0 || strcmp(district, "..") == 0 || strchr(district, '/') != NULL) {
-        fprintf(stderr, "[EROARE] Nume de district invalid sau periculos: '%s'.\n", district ? district : "NULL");
-        return;
-    }
-
-    struct stat st;
-    if (stat(district, &st) == -1) {
-        perror("[EROARE] Districtul nu a putut fi gasit");
-        return;
-    }
-
-
-    char link_name[512];
-    snprintf(link_name, sizeof(link_name), "active_reports-%s", district);
-
-    if (remove_directory_recursive(district) == 0) {
-        if (unlink(link_name) == 0) {
-            printf("[SUCCESS] Districtul '%s' si symlink-ul '%s' au fost eliminate.\n", district, link_name);
-        } else {
-            printf("[INFO] Districtul '%s' a fost sters, dar symlink-ul nu a putut fi eliminat (posibil inexistent).\n", district);
-        }
-    } else {
-        perror("[EROARE] Districtul nu a putut fi sters");
-    }
-}
-
-
-
-
-
 int main(int argc, char *argv[]) {
     char *role = NULL, *user = "unknown", *command = NULL, *district = NULL;
     int district_idx = -1;
 
-
+    // 1. Parsarea argumentelor din linia de comanda
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--role") == 0 && i + 1 < argc) {
             role = argv[++i];
@@ -514,11 +438,11 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // 2. Validarea argumentelor de baza
     if (role == NULL || command == NULL || district == NULL) {
         printf("Utilizare: %s --role <manager|inspector> [--user <nume>] <comanda> <district> [argumente]\n", argv[0]);
         return 1;
     }
-
 
     if (strcmp(role, "manager") != 0 && strcmp(role, "inspector") != 0) {
         printf("Eroare: Rol invalid! (manager/inspector).\n");
@@ -527,77 +451,49 @@ int main(int argc, char *argv[]) {
 
     int first_command_arg = district_idx + 1;
 
-    if (strcmp(command, "remove_district") == 0) {
-        if (strcmp(role, "manager") != 0) {
-            printf("Eroare: Doar managerul poate sterge un district.\n");
-            return 1;
-        }
-        remove_district(district, role);
-        return 0;
-    }
-
-
+    // 3. Executarea comenzilor
+    
+    // Crearea/actualizarea automata a symlink-ului la fiecare rulare
     handle_symlink(district);
-
 
     if (strcmp(command, "add") == 0) {
         add(district, role, user);
-    }
-
+    } 
     else if (strcmp(command, "list") == 0) {
         list_reports(district, role);
-    }
-
+    } 
     else if (strcmp(command, "view") == 0) {
         if (first_command_arg < argc) {
             int id_report;
-            if (!parse_int_arg(argv[first_command_arg], &id_report)) {
-                printf("ID raport invalid: %s\n", argv[first_command_arg]);
-                return 1;
+            if (parse_int_arg(argv[first_command_arg], &id_report)) {
+                view(district, id_report);
+            } else {
+                printf("ID raport invalid.\n");
             }
-            view(district, id_report);
         } else {
-            int id_cautat;
-            printf("Introduceti id-ul cautat: ");
-            if (scanf("%d", &id_cautat) == 1) {
-                view(district, id_cautat);
-            }
+            printf("Lipseste ID-ul raportului.\n");
         }
-    }
-
-    else if (strcmp(command, "remove_report") == 0) {
-        if (strcmp(role, "manager") != 0) {
-            printf("Eroare: Doar managerul poate sterge rapoarte.\n");
-            return 1;
-        }
-        if (first_command_arg < argc) {
-            int id_report;
-            if (!parse_int_arg(argv[first_command_arg], &id_report)) {
-                printf("ID raport invalid: %s\n", argv[first_command_arg]);
-                return 1;
-            }
-            remove_report(district, id_report);
-        } else {
-            printf("Argument lipsa: ID raport.\n");
-        }
-    }
-
+    } 
+    else if (strcmp(command, "remove_district") == 0) {
+        remove_district(district, role);
+    } 
     else if (strcmp(command, "update_threshold") == 0) {
-        if (strcmp(role, "manager") != 0) {
-            printf("Eroare: Doar managerul poate actualiza pragul.\n");
-            return 1;
-        }
-        if (first_command_arg < argc) {
-            update_threshold(district, argv[first_command_arg]);
+        if (strcmp(role, "manager") == 0) {
+            if (first_command_arg < argc) {
+                update_threshold(district, argv[first_command_arg]);
+            } else {
+                printf("Lipseste valoarea pragului.\n");
+            }
         } else {
-            printf("Argument lipsa: valoare prag.\n");
+            printf("Acces refuzat: Doar managerul poate schimba pragul.\n");
         }
-    }
-
+    } 
     else if (strcmp(command, "filter") == 0) {
         filter_reports(district, argc, argv, first_command_arg);
-    }
-
+    } 
+    else if (strcmp(command, "remove_report") == 0) {
+        printf("Comanda remove_report nu este implementata inca.\n");
+    } 
     else {
         printf("Comanda necunoscuta: %s\n", command);
         return 1;
