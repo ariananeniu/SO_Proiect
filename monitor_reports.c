@@ -26,6 +26,21 @@ void handle_sigusr1(int signum) {
 }
 
 int main(void) {
+    // 1. FAZA 3: Verificare dacă rulează deja un monitor 
+    FILE *f_check = fopen(PID_FILE, "r");
+    if (f_check) {
+        int existing_pid;
+        if (fscanf(f_check, "%d", &existing_pid) == 1) {
+            char error_msg[256];
+            // Formatul e esențial ca hub_mon să știe că e eroare! [cite: 131]
+            snprintf(error_msg, sizeof(error_msg), "ERR_PID:%d\n", existing_pid);
+            write(1, error_msg, strlen(error_msg));
+            fclose(f_check);
+            exit(EXIT_FAILURE); // Se oprește imediat 
+        }
+        fclose(f_check);
+    }
+    
     // ... Partea cu fopen si crearea PID_FILE ramane identica ...
     FILE *f = fopen(PID_FILE, "w");
     if (!f) {
