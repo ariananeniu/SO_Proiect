@@ -39,7 +39,7 @@ int main(int argc, char *argv[]){
     }
 
     Report r;
-    InspectorScore scores[100]; // Presupunem un maxim de 100 de inspectori diferiți
+    InspectorScore scores[100]; //maxim de 100 de inspectori diferiți
     int num_inspectors = 0;
 
     // Citim fișierul bucată cu bucată (pachete de mărimea structurii Report)
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]){
             }
         }
 
-        // Dacă e un inspector pe care nu l-am mai văzut, îl adăugăm în listă
+        
         if (!found && num_inspectors < 100) {
             strcpy(scores[num_inspectors].name, r.inspector);
             scores[num_inspectors].score = r.severity; // Setăm scorul inițial
@@ -65,8 +65,7 @@ int main(int argc, char *argv[]){
 
     fclose(file);
 
-    // 3. AFIȘAREA REZULTATELOR
-    // Acest printf nu va apărea pe ecran direct, ci va curge prin pipe înapoi la city_hub!
+    
     for (int i = 0; i < num_inspectors; i++) {
         printf("[%s] Inspector: %s | Workload Score: %d\n", district, scores[i].name, scores[i].score);
     }
