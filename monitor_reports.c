@@ -9,10 +9,7 @@
 /* Functie de tratare a semnalului (signal handler)*/
 void handle_sigint(int signum) {
     char msg[128];
-    // Formatam mesajul, dar NU folosim printf
     snprintf(msg, sizeof(msg), "\n[MONITOR] Am captat semnalul %d (SIGINT). Inchidere.\n", signum);
-    // Scriem mesajul INSTANTANEU folosind apelul de sistem write 
-    // 1 reprezinta STDOUT_FILENO (care e redirectionat in pipe)
     write(1, msg, strlen(msg)); 
     unlink(PID_FILE);
     exit(0);
@@ -32,16 +29,14 @@ int main(void) {
         int existing_pid;
         if (fscanf(f_check, "%d", &existing_pid) == 1) {
             char error_msg[256];
-            // Formatul e esențial ca hub_mon să știe că e eroare! [cite: 131]
             snprintf(error_msg, sizeof(error_msg), "ERR_PID:%d\n", existing_pid);
             write(1, error_msg, strlen(error_msg));
             fclose(f_check);
-            exit(EXIT_FAILURE); // Se oprește imediat 
+            exit(EXIT_FAILURE); 
         }
         fclose(f_check);
     }
     
-    // ... Partea cu fopen si crearea PID_FILE ramane identica ...
     FILE *f = fopen(PID_FILE, "w");
     if (!f) {
         perror("[EROARE] Nu s-a putut crea fisierul .monitor_pid");
@@ -53,19 +48,19 @@ int main(void) {
     struct sigaction act;
     memset(&act, 0, sizeof(struct sigaction));
 
-    act.sa_handler = handle_sigint; //
+    act.sa_handler = handle_sigint;
     sigemptyset(&act.sa_mask);
     act.sa_flags = 0; 
-    sigaction(SIGINT, &act, NULL); //
+    sigaction(SIGINT, &act, NULL);
 
-    act.sa_handler = handle_sigusr1; //
-    sigaction(SIGUSR1, &act, NULL); //
+    act.sa_handler = handle_sigusr1;
+    sigaction(SIGUSR1, &act, NULL);
 
     char start_msg[128];
     snprintf(start_msg, sizeof(start_msg), "[MONITOR] Pornit (PID: %d). Astept semnale...\n", getpid());
     write(1, start_msg, strlen(start_msg));
 
-    /* Suspendam executia procesului folosind sleep() */
+    /* Suspendarea executiei procesului folosind sleep() */
     while (1) {
         sleep(10); //
     }

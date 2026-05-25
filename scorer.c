@@ -39,17 +39,16 @@ int main(int argc, char *argv[]){
     }
 
     Report r;
-    InspectorScore scores[100]; //maxim de 100 de inspectori diferiți
+    InspectorScore scores[100]; 
     int num_inspectors = 0;
 
-    // Citim fișierul bucată cu bucată (pachete de mărimea structurii Report)
+    //Se citeste fisierul bucata cu bucata
     while (fread(&r, sizeof(Report), 1, file) == 1) {
         int found = 0;
         
-        // Căutăm dacă inspectorul citit acum este deja în lista noastră
         for (int i = 0; i < num_inspectors; i++) {
             if (strcmp(scores[i].name, r.inspector) == 0) {
-                scores[i].score += r.severity; // Găsit -> Îi adunăm severitatea
+                scores[i].score += r.severity; 
                 found = 1;
                 break;
             }

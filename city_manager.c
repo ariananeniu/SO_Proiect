@@ -20,11 +20,14 @@ typedef struct {
     char description[256];
 }Report;
 
+//Golește buffer-ul stdin (aruncă resturile precum '\n' lăsat de scanf) 
+//pentru a nu bloca următoarele citiri de tip fgets.
 void clear_input_line(void) {
     int ch;
     while ((ch = getchar()) != '\n' && ch != EOF);
 }
 
+// Convertește sigur un string ('text') în int ('value') folosind strtol.
 int parse_int_arg(const char *text, int *value) {
     char *end = NULL;
     long parsed = strtol(text, &end, 10);
@@ -37,6 +40,8 @@ int parse_int_arg(const char *text, int *value) {
     return 1;
 }
 
+//Parcurge fisierul binar pentru a gasi cel mai mare ID de raport existent.
+//Returneaza max_id + 1 pentru noul raport (sau 1 daca fisierul e gol/nu exista). 
 int next_report_id(const char *path) {
     int fd = open(path, O_RDONLY);
     int max_id = 0;
@@ -56,6 +61,7 @@ int next_report_id(const char *path) {
     return max_id + 1;
 }
 
+//Transforma bitii de permisiuni din st_mode intr-un format text prin operatii pe biti. 
 void get_permissions(mode_t mode, char *str) {
     strcpy(str, "---------");
     if (mode & S_IRUSR) str[0] = 'r';
@@ -69,6 +75,9 @@ void get_permissions(mode_t mode, char *str) {
     if (mode & S_IXOTH) str[8] = 'x';
 }
 
+//Verifica permisiunile fisierului folosind apelul stat().
+//Daca fisierul exista dar nu contine bitul necesar (required_bit),
+//scrie eroarea la STDERR si opreste fortat executia programului.
 void check_access(const char *path, mode_t required_bit, const char *msg) {
     struct stat st;
     if (stat(path, &st) == -1) return; // Fișierul nu există încă, trecem mai departe
@@ -79,7 +88,17 @@ void check_access(const char *path, mode_t required_bit, const char *msg) {
 }
 
 
+/*Funcția log_action generează și gestionează jurnalul de activități (logged_district).
+Actioneaza ca un filtru de securitate: foloseste stat() pentru a bloca inspectorii
+sa scrie in log sau sa il creeze, impunand restrictiile rolului (permisiuni 644).
+Apoi deschide fisierul in mod APPEND si il scrie pe disc prin intermediul apelului de sistem write().
+ */
 void log_action(const char *district, const char *role, const char *user, const char *action) {
+    if (strcmp(role, "inspector") == 0) {
+        printf("[AVERTISMENT] Inspectorii nu au drept de scriere in log.\n");
+        return;
+    }
+
     char path_log[1024];
     snprintf(path_log, sizeof(path_log), "%s/logged_district", district);
 
@@ -107,24 +126,28 @@ void log_action(const char *district, const char *role, const char *user, const 
     }
 }
 
+/*Notifică procesul de fundal (monitor_reports) cu privire la o nouă acțiune.
+Funcția citește PID-ul procesului țintă din fișierul de configurare ".monitor_pid"
+și folosește apelul de sistem kill() pentru a-i transmite semnalul asincron SIGUSR1.
+Indiferent de rezultat, rezultatul operațiunii IPC este înregistrat obligatoriu în jurnalul districtului.*/
 void notify_monitor(const char *district, const char *role, const char *user) {
     FILE *f = fopen(".monitor_pid", "r");
     char action_msg[256];
 
     if (!f) {
-        snprintf(action_msg, sizeof(action_msg), "NOTIFY MONITOR: FAILED (Monitor not running)");
+        snprintf(action_msg, sizeof(action_msg), "NOTIFICARE MONITOR: ESUAT (Monitorul nu ruleaza)");
         log_action(district, role, user, action_msg);
         return;
     }
 
     pid_t monitor_pid;
     if (fscanf(f, "%d", &monitor_pid) != 1) {
-        snprintf(action_msg, sizeof(action_msg), "NOTIFY MONITOR: FAILED (Invalid PID file)");
+        snprintf(action_msg, sizeof(action_msg), "NOTIFICARE MONITOR: ESUAT (Fisier PID invalid)");
     } else {
         if (kill(monitor_pid, SIGUSR1) == 0) {
-            snprintf(action_msg, sizeof(action_msg), "NOTIFY MONITOR: SUCCESS (Sent to PID %d)", monitor_pid);
+            snprintf(action_msg, sizeof(action_msg), "NOTIFICARE MONITOR: SUCCES (Trimis catre PID %d)", monitor_pid);
         } else {
-            snprintf(action_msg, sizeof(action_msg), "NOTIFY MONITOR: FAILED (Signal error)");
+            snprintf(action_msg, sizeof(action_msg), "NOTIFICARE MONITOR: ESUAT (Eroare semnal)");
         }
     }
 
@@ -132,6 +155,9 @@ void notify_monitor(const char *district, const char *role, const char *user) {
     log_action(district, role, user, action_msg);
 }
 
+/* Gestioneaza shortcut-ul (link simbolic) catre fisierul binar al districtului.
+Daca un link vechi exista, lstat verifica identitatea lui, iar stat() verifica 
+daca tinta inca exista. In final, sterge link-ul vechi (unlink) si creeaza unul pnou (symlink).*/
 void handle_symlink(const char *district) {
     char link_name[512], target_path[1024];
     snprintf(link_name, sizeof(link_name), "active_reports-%s", district);
@@ -142,7 +168,7 @@ void handle_symlink(const char *district) {
         if (S_ISLNK(st.st_mode)) {
             struct stat st_target;
             if (stat(link_name, &st_target) == -1) {
-                printf("[AVERTISMENT]: Link dangling detectat: %s\n", link_name);
+                printf("[AVERTISMENT] Legatura intrerupta detectata (destinatia nu exista): %s\n", link_name);
             }
             unlink(link_name);
         }
@@ -150,8 +176,7 @@ void handle_symlink(const char *district) {
     symlink(target_path, link_name);
 }
 
-// --- Funcții generate cu asistența AI pentru Filter ---
-
+//Funcții generate cu asistența AI pentru Filter
 int parse_condition(const char *input, char *field, char *op, char *value) {
     return sscanf(input, "%31[^:]:%4[^:]:%63s", field, op, value) == 3;
 }
@@ -186,8 +211,13 @@ int match_condition(Report *r, const char *field, const char *op, const char *va
 }
 
 
+/*Afiseaza metadatele si continutul bazei de date (reports.dat) pentru un district.
+Functionalitatea este impartita in doua etape:
+   1.Foloseste apelul sistem stat() pentru a extrage si afisa metadatele de sistem 
+   2. Citirea datelor: Deschide fisierul binar in mod read-only (O_RDONLY) si 
+      il parcurge secvential cu apelul read(), extragand bucati de memorie de dimensiunea structurii Report.
+ */
 void list_reports(const char *district, const char *role) {
-    (void)role;
     char path[1024];
     snprintf(path, sizeof(path), "%s/reports.dat", district);
 
@@ -340,7 +370,7 @@ void remove_district(const char *district, const char *role) {
 
     if (district == NULL || strlen(district) == 0 ||
         strcmp(district, ".") == 0 || strcmp(district, "..") == 0 || strchr(district, '/') != NULL) {
-        fprintf(stderr, "[EROARE] Nume de district invalid sau periculos.\n");
+        fprintf(stderr, "[EROARE] Nume de district invalid.\n");
         return;
     }
 
@@ -369,6 +399,70 @@ void remove_district(const char *district, const char *role) {
         }
     }
 }
+
+void remove_report(const char *district, const char *role, const char *user, int target_id) {
+
+    if (strcmp(role, "manager") != 0) {
+        fprintf(stderr, "[EROARE] Acces refuzat: Doar managerul poate sterge rapoarte.\n");
+        return;
+    }
+
+    char path_file[1024];
+    snprintf(path_file, sizeof(path_file), "%s/reports.dat", district);
+
+    
+    int fd = open(path_file, O_RDWR);
+    if (fd == -1) {
+        perror("Eroare la accesarea reports.dat");
+        return;
+    }
+
+    Report r;
+    off_t target_offset = -1;
+    int found = 0;
+
+    
+    while (read(fd, &r, sizeof(Report)) == sizeof(Report)) {
+        if (r.id == target_id) {
+            found = 1;
+            target_offset = lseek(fd, -sizeof(Report), SEEK_CUR);
+            break;
+        }
+    }
+
+    if (!found) {
+        printf("[!] Raportul cu ID-ul %d nu a fost gasit in %s.\n", target_id, district);
+        close(fd);
+        return;
+    }
+
+    //Se muta cu o pozitie la stanga toate inregistrarile care urmeaza dup cel sters
+    off_t read_offset = target_offset + sizeof(Report);
+    off_t write_offset = target_offset;
+
+    while (1) {
+        lseek(fd, read_offset, SEEK_SET);
+        int bytes_read = read(fd, &r, sizeof(Report));
+        
+        if (bytes_read <= 0) break; 
+
+        lseek(fd, write_offset, SEEK_SET);
+        write(fd, &r, sizeof(Report));
+
+        read_offset += sizeof(Report);
+        write_offset += sizeof(Report);
+    }
+
+    ftruncate(fd, write_offset);
+    close(fd);
+
+    printf("Raportul cu ID %d a fost sters cu succes.\n", target_id);
+
+    char action[256];
+    snprintf(action, sizeof(action), "REMOVE REPORT ID %d", target_id);
+    log_action(district, role, user, action);
+}
+
 
 void filter_reports(const char *district, int argc, char *argv[], int start_idx) {
     char path[1024];
@@ -454,7 +548,9 @@ int main(int argc, char *argv[]) {
     // 3. Executarea comenzilor
     
     // Crearea/actualizarea automata a symlink-ului la fiecare rulare
-    handle_symlink(district);
+   if (strcmp(command, "remove_district") != 0) {
+        handle_symlink(district);
+    }
 
     if (strcmp(command, "add") == 0) {
         add(district, role, user);
@@ -492,7 +588,16 @@ int main(int argc, char *argv[]) {
         filter_reports(district, argc, argv, first_command_arg);
     } 
     else if (strcmp(command, "remove_report") == 0) {
-        printf("Comanda remove_report nu este implementata inca.\n");
+        if (first_command_arg < argc) {
+            int id_report;
+            if (parse_int_arg(argv[first_command_arg], &id_report)) {
+                remove_report(district, role, user, id_report);
+            } else {
+                printf("ID raport invalid.\n");
+            }
+        } else {
+            printf("Lipseste ID-ul raportului de sters.\n");
+        }
     } 
     else {
         printf("Comanda necunoscuta: %s\n", command);

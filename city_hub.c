@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <sys/wait.h>
 
 
 void start_monitor(){
@@ -33,7 +34,7 @@ void start_monitor(){
             dup2(pfd[1], 1);
             close(pfd[1]);
 
-            execlp("./monitorreports","monitor_reports",NULL);
+            execlp("./monitor_reports", "monitor_reports", NULL);
 
             printf("Eroare: nu s-a putut rula ./monitorreports\n");
             exit(1);
@@ -88,6 +89,9 @@ void calculate_score(int no_distr, char *argv_district[]){
             dup2(pfd[1],1); //face ca stdout sa pointeze spre pfd[1]
             close(pfd[1]); //pfd[1] nu mai e necesar
             execlp("./scorer","scorer",current_district,NULL);
+
+            perror("Eroare: nu s-a putut rula scorer");
+            exit(1);
         }
         close(pfd[1]);
         array_pfd[i] = pfd[0];  
@@ -108,27 +112,29 @@ void calculate_score(int no_distr, char *argv_district[]){
 
         fclose(stream);
     }
+    for(i = 0; i < no_distr; i++){
+        wait(NULL);
+    }
     
 }
 
 int main(){
+
     char input[1024];
     char *tokens[100];
     int token_count;
 
     printf("=== CITY INFRASTRUCTURE HUB (Faza 3) ===\n");
 
-    //Buclă infinită pentru interpretorul de comenzi interactiv cerut de documentație!!!
+   
     while (1) {
-        printf("city_hub> "); // Prompt-ul interactiv
-
-        //Citirea liniei de la tastatură !!!
+        printf("city_hub> "); 
         if (fgets(input, sizeof(input), stdin) == NULL) break;
 
-        //Eliminarea caracterului newline (\n) de la sfârșitul inputului !!!
+        //Eliminarea caracterului newline (\n) de la sfârșitul inputului
         input[strcspn(input, "\n")] = '\0';
 
-        //Spargerea liniei în cuvinte (tokenizare) separate prin spațiu !!!
+        //Spargerea liniei în cuvinte separate prin spațiu 
         token_count = 0;
         char *space_pointer = strtok(input, " ");
         while (space_pointer != NULL && token_count < 100) {
@@ -136,17 +142,16 @@ int main(){
             space_pointer = strtok(NULL, " ");
         }
 
-        if (token_count == 0) continue; // Dacă utilizatorul a apăsat doar Enter, trecem mai departe
+        if (token_count == 0) continue; // Dacă utilizatorul a apăsat doar Enter, se trece mai departe
 
-        //Identificarea și rutarea comenzilor !!!
+        //Identificarea și rutarea comenzilor 
         if (strcmp(tokens[0], "start_monitor") == 0) {
-            start_monitor(); // [cite: 125]
+            start_monitor();
         } 
         else if (strcmp(tokens[0], "calculate_scores") == 0) {
             if (token_count < 2) {
                 printf("Eroare: comanda cere o listă de districte. Format: calculate_scores <distr1> <distr2>...\n");
             } else {
-                // !!! ADAUGAT: Pasăm numărul de districte (token_count - 1) și pointerul către primul district (tokens + 1)[cite: 132]!!!
                 calculate_score(token_count - 1, tokens + 1);
             }
         } 
